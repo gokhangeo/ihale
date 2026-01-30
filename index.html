@@ -206,10 +206,7 @@
         .table-wrapper[data-group="2/B"] .col-tarih,
         .table-wrapper[data-group="GÜNCELLEME"] .col-tarih,
         .table-wrapper[data-group="2/B"] .col-parsel,
-        .table-wrapper[data-group="Müdürlük"] .col-tarih,
-        .table-wrapper[data-group="GÜNCELLEME(2026)"] .col-alan,
-        .table-wrapper[data-group="GÜNCELLEME(2026)"] .col-uygulama,
-        .table-wrapper[data-group="GÜNCELLEME(2026)"] .col-tarih {
+        .table-wrapper[data-group="Müdürlük"] .col-tarih {
             display: none;
         }
 
@@ -492,14 +489,12 @@
         .card-2b { background-color: #007bff; }
         .card-guncelleme { background-color: #28a745; }
         .card-mudurluk { background-color: #fd7e14; }
-        .card-guncelleme2026 { background-color: #6f42c1; } /* Mor renk - Yeni Kart */
         
         .card-2b.expanded { background-color: #e7f1ff; border-left: 5px solid #007bff; }
         .card-guncelleme.expanded { background-color: #d4edda; border-left: 5px solid #28a745; }
         .card-mudurluk.expanded { background-color: #ffe8d6; border-left: 5px solid #fd7e14; }
-        .card-guncelleme2026.expanded { background-color: #e2d9f3; border-left: 5px solid #6f42c1; }
         
-        .card-2b.expanded h3, .card-guncelleme.expanded h3, .card-mudurluk.expanded h3, .card-guncelleme2026.expanded h3 { color: #343a40; }
+        .card-2b.expanded h3, .card-guncelleme.expanded h3, .card-mudurluk.expanded h3 { color: #343a40; }
         
 
         /* Uyarı Stilleri */
@@ -919,7 +914,7 @@ function handleTableChange(event) {
             }
 
             const dataRecord = isTakipData.find(r => r['İLÇE'] == ilce && r['BİRİM'] == birim);
-            if (dataRecord && (dataRecord['UYGULAMA'] === 'GÜNCELLEME' || dataRecord['UYGULAMA'] === 'GÜNCELLEME(2026)')) {
+            if (dataRecord && (dataRecord['UYGULAMA'] === 'GÜNCELLEME')) {
                 const detailRow = document.querySelector(`#guncellemeDetailTable tr[data-row-key="${rowKey}"]`);
                 if (detailRow) {
                     detailRow.classList.toggle('tamamlandi', target.checked);
@@ -1112,13 +1107,18 @@ async function fetchFromGitHub() {
         isTakipData = XLSX.utils.sheet_to_json(workbook.Sheets['İş Takip Listesi'] || {})
             .filter(row => row['İLÇE'] && row['BİRİM']); // Filter empty rows
 
-        // GÜNCELLEME ve GÜNCELLEME(2026) Sayfalarını Okuma
-        const guncellemeOld = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme'] || {});
-        const guncelleme2026 = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme(2026)'] || {});
-        
-        // Detay verilerini birleştir ve boş satırları temizle
-        guncellemeData = [...guncellemeOld, ...guncelleme2026]
+        // GÜNCELLEME Sayfasını Okuma
+        const rawGuncellemeData = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme'] || {})
              .filter(row => row['İLÇE'] && row['BİRİM']);
+        
+        // Sadece 'guncellemeOld' kullanılıyor, 2026 kaldırıldı.
+        // Benzersiz hale getir (İlçe ve Birim kombinasyonuna göre) - Opsiyonel ama iyi olur
+        const uniqueGuncellemeMap = new Map();
+        rawGuncellemeData.forEach(item => {
+            const key = `${item['İLÇE'].toString().trim().toUpperCase()}|${item['BİRİM'].toString().trim().toUpperCase()}`;
+            uniqueGuncellemeMap.set(key, item);
+        });
+        guncellemeData = Array.from(uniqueGuncellemeMap.values());
         
         $('#personel-modal-select').select2({
             placeholder: "Personel Seçin",
@@ -1135,7 +1135,18 @@ async function fetchFromGitHub() {
         // setUyari("Veriler başarıyla çekildi.", 'basari'); // Artık uyari div'i kullanılıyor
         markAsClean();
         durumFiltresiDoldur();
-        showTab('Tümü');
+        
+        // VARSAYILAN OLARAK İLK KATEGORİYİ AÇ (TÜMÜ YERİNE)
+        // Genelde 'GÜNCELLEME' veya '2/B' olur.
+        const firstTabBtn = document.querySelector('.tab-btn');
+        if (firstTabBtn) {
+             const tabName = firstTabBtn.dataset.uygulama;
+             showTab(tabName);
+        } else {
+             // Fallback
+             showTab('GÜNCELLEME'); 
+        }
+
 
     } catch (error) {
         console.error("GitHub'dan veri çekme hatası:", error);
@@ -1162,36 +1173,7 @@ function renderAllTables(mainData, detailData) {
         return acc;
     }, {});
 
-    // "Tümü" Sekmesi
-    const allTabBtn = document.createElement('button');
-    allTabBtn.className = 'tab-btn active';
-    allTabBtn.textContent = 'Tümü';
-    allTabBtn.onclick = () => showTab('Tümü');
-    tabsContainer.appendChild(allTabBtn);
-
-    const allWrapper = document.createElement('div');
-    allWrapper.className = 'table-wrapper active';
-    allWrapper.dataset.group = 'Tümü';
-    const allTable = document.createElement('table');
-    const totalParsel = calculateColumnSum(ihaleIsleri, 'PARSEL SAYISI');
-    const totalBlok = calculateColumnSum(ihaleIsleri, 'BLOK SAYISI');
-    const totalAlan = calculateColumnSum(ihaleIsleri, 'ALAN(Ha)').toFixed(2);
-    
-    // Robot butonu sütunu kaldırıldı
-    allTable.innerHTML = `<thead><tr><th class="check-cell">&#10004;</th><th class="col-ilce">İLÇE</th><th>BİRİM</th><th class="col-uygulama">UYGULAMA</th><th>NOT</th><th>PERSONEL</th><th style="display:none;">GÖREVLİ PERSONELLER</th><th class="col-parsel">PARSEL (${totalParsel})</th><th>BLOK (${totalBlok})</th><th class="col-alan">ALAN(Ha) (${totalAlan})</th><th class="col-tarih">İŞE BAŞLAMA/YER TESLİMİ</th><th class="col-tarih">İHALE BİTİŞ TARİHİ</th><th>DURUMU</th></tr></thead>`;
-    allWrapper.appendChild(allTable);
-    tableContainer.appendChild(allWrapper);
-
-    for (const uygulama in groupedData) {
-        const tbody = document.createElement('tbody');
-        const headerRow = tbody.insertRow();
-        headerRow.className = 'group-header-row';
-        headerRow.onclick = (e) => { if (e.target.tagName !== 'BUTTON') toggleGroup(tbody); };
-        headerRow.insertCell().innerHTML = `<h3><span>${uygulama} (<span class="group-count">${groupedData[uygulama].length}</span> iş)</span><button class="group-toggle-btn" onclick="event.stopPropagation(); toggleGroup(this.closest('tbody'))">Kapat</button></h3>`;
-        headerRow.cells[0].colSpan = 12; // Colspan 12'ye düşürüldü (robot sütunu gittiği için)
-        groupedData[uygulama].forEach(rowData => tbody.appendChild(createRowElement(rowData, 'Tümü')));
-        allTable.appendChild(tbody);
-    }
+    // "TÜMÜ" SEKMESİ KALDIRILDI
     
     // Diğer Ana Sekmeler
     for (const uygulama in groupedData) {
@@ -1206,7 +1188,7 @@ function renderAllTables(mainData, detailData) {
         tableWrapper.className = 'table-wrapper';
         tableWrapper.dataset.group = uygulama;
         const table = document.createElement('table');
-        const blokSayisiHeader = (uygulama === 'GÜNCELLEME' || uygulama === 'GÜNCELLEME(2026)') ? 'İDÖ' : 'BLOK';
+        const blokSayisiHeader = (uygulama === 'GÜNCELLEME') ? 'İDÖ' : 'BLOK';
         
         const grupParsel = calculateColumnSum(groupedData[uygulama], 'PARSEL SAYISI');
         const grupBlok = calculateColumnSum(groupedData[uygulama], 'BLOK SAYISI');
@@ -1398,12 +1380,6 @@ function createGeneralReportsUI() {
     btnGuncelleme.innerHTML = '📄 Güncelleme Raporu Oluştur';
     btnGuncelleme.onclick = () => generateBulkReport('GÜNCELLEME');
     
-    const btnGuncelleme2026 = document.createElement('button');
-    btnGuncelleme2026.className = 'success';
-    btnGuncelleme2026.style.backgroundColor = '#6f42c1';
-    btnGuncelleme2026.innerHTML = '📄 Güncelleme(2026) Raporu';
-    btnGuncelleme2026.onclick = () => generateBulkReport('GÜNCELLEME(2026)');
-
     const btn2B = document.createElement('button');
     btn2B.className = 'info';
     btn2B.innerHTML = '📄 2/B Raporu Oluştur';
@@ -1424,7 +1400,6 @@ function createGeneralReportsUI() {
     };
 
     controls.appendChild(btnGuncelleme);
-    controls.appendChild(btnGuncelleme2026);
     controls.appendChild(btn2B);
     controls.appendChild(btnMudurluk);
     controls.appendChild(btnKopyala);
@@ -1460,7 +1435,7 @@ function generateBulkReport(category) {
     // Başlık
     let reportText = "";
 
-    if (category === 'GÜNCELLEME' || category === 'GÜNCELLEME(2026)') {
+    if (category === 'GÜNCELLEME') {
         // GÜNCELLEME İÇİN ÖZEL BİLGİ NOTU FORMATI
         
         let toplamBirim = reportData.length;
@@ -1583,7 +1558,7 @@ ${category} kapsamında toplam **${reportData.length}** adet iş listelenmiştir
    - İşe Başlama: ${fd(job['İŞE BAŞLAMA/YER TESLİMİ'])} | Bitiş: ${fd(job['İHALE BİTİŞ TARİHİ'])}
 `;
 
-        if (category === 'GÜNCELLEME' || category === 'GÜNCELLEME(2026)') {
+        if (category === 'GÜNCELLEME') {
             reportText += `   - Arazi Yersel Ölçüm: ${fd(detailRow['ARAZİ YERSEL ÖLÇÜM TARİHİ(YAPILAN)'])}
    - Uçuş Tarihi: ${fd(detailRow['UÇUŞ TARİHİ(YAPILAN)'])}
    - Uçuş Kıymetlendirme: ${detailRow['UÇUŞ KIYMETLENDİRME DURUM'] || '-'}
@@ -1663,24 +1638,9 @@ function saveToGitHub() {
 
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mainSheetData, {header: EXCEL_HEADERS_MAIN.filter(h => h !== 'PERSONEL'), cellDates:true}), 'İş Takip Listesi');
             
-            // Detay verilerini ayrıştır (Güncelleme ve Güncelleme(2026))
-            const detailOld = [];
-            const detail2026 = [];
+            // Tüm detay verilerini "Güncelleme" sayfasına yaz
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allDetailData, {header: EXCEL_HEADERS_DETAIL, cellDates:true}), 'Güncelleme');
 
-            allDetailData.forEach(row => {
-                // Bu detay satırının ana listedeki karşılığını bul
-                const parentJob = mainData.find(m => m['İLÇE'] === row['İLÇE'] && m['BİRİM'] === row['BİRİM']);
-                if (parentJob && parentJob['UYGULAMA'] === 'GÜNCELLEME(2026)') {
-                    detail2026.push(row);
-                } else {
-                    detailOld.push(row);
-                }
-            });
-
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailOld, {header: EXCEL_HEADERS_DETAIL, cellDates:true}), 'Güncelleme');
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail2026, {header: EXCEL_HEADERS_DETAIL, cellDates:true}), 'Güncelleme(2026)');
-
-            
             const personelData = [['ad', 'unvan'], ...fullPersonelListesi.map(p => { 
                 const m = p.match(/(.*) \((.*)\)/); 
                 return m ? [m[1].trim(), m[2].trim()] : [p, '']; 
@@ -1720,7 +1680,7 @@ function saveToGitHub() {
             document.getElementById('uyari').style.display = 'block'; // Başarı mesajını göster
             markAsClean();
             
-            const activeTab = document.querySelector('.tab-btn.active').dataset.uygulama || 'Tümü';
+            const activeTab = document.querySelector('.tab-btn.active').dataset.uygulama || 'GÜNCELLEME';
             await fetchFromGitHub();
             showTab(activeTab);
 
@@ -1889,7 +1849,7 @@ function createGuncellemeDetailRowElement(data) {
     const rowKey = `${data['İLÇE']}|${data['BİRİM']}`;
     newRow.dataset.rowKey = rowKey;
 
-    const mainDataRow = isTakipData.find(r => r['İLÇE'] === data['İLÇE'] && r['BİRİM'] === data['BİRİM'] && (r['UYGULAMA'] === 'GÜNCELLEME' || r['UYGULAMA'] === 'GÜNCELLEME(2026)'));
+    const mainDataRow = isTakipData.find(r => r['İLÇE'] === data['İLÇE'] && r['BİRİM'] === data['BİRİM'] && r['UYGULAMA'] === 'GÜNCELLEME');
     if (mainDataRow && mainDataRow['Tamamlandı'] === 'EVET') {
         newRow.classList.add('tamamlandi');
     }
@@ -2662,7 +2622,6 @@ function createSummaryCards() {
     const groups = {
         '2/B': { data: isTakipData.filter(r => r['UYGULAMA'] === '2/B' && r['İHALELİ/MÜDÜRLÜK'] !== 'Müdürlük'), colorClass: 'card-2b' },
         'GÜNCELLEME': { data: isTakipData.filter(r => r['UYGULAMA'] === 'GÜNCELLEME' && r['İHALELİ/MÜDÜRLÜK'] !== 'Müdürlük'), colorClass: 'card-guncelleme' },
-        'GÜNCELLEME(2026)': { data: isTakipData.filter(r => r['UYGULAMA'] === 'GÜNCELLEME(2026)' && r['İHALELİ/MÜDÜRLÜK'] !== 'Müdürlük'), colorClass: 'card-guncelleme2026' }, // YENİ
         'Müdürlük': { data: isTakipData.filter(r => r['İHALELİ/MÜDÜRLÜK'] === 'Müdürlük'), colorClass: 'card-mudurluk' }
     };
 
@@ -2684,7 +2643,7 @@ function createSummaryCards() {
         let projectStartDate = null;
         let projectEndDate = null;
         
-        if (groupName === 'GÜNCELLEME' || groupName === 'GÜNCELLEME(2026)') {
+        if (groupName === 'GÜNCELLEME') {
              group.data.forEach(job => {
                 const detailRow = guncellemeData.find(d => d['İLÇE'] === job['İLÇE'] && d['BİRİM'] === job['BİRİM']);
                 if (detailRow) {
@@ -2704,7 +2663,7 @@ function createSummaryCards() {
         Object.entries(statusCounts).sort((a,b) => b[1] - a[1]).forEach(([status, count]) => {
             let detailListHTML = '';
             // GÜNCELLEME kartına özel tarih bilgisi ekle
-            if (groupName === 'GÜNCELLEME' || groupName === 'GÜNCELLEME(2026)') {
+            if (groupName === 'GÜNCELLEME') {
                 const jobsInStatus = group.data.filter(job => (job['DURUMU'] || 'Belirsiz') === status);
                 detailListHTML += '<ul>';
                 jobsInStatus.forEach(job => {
