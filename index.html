@@ -206,7 +206,10 @@
         .table-wrapper[data-group="2/B"] .col-tarih,
         .table-wrapper[data-group="GÜNCELLEME"] .col-tarih,
         .table-wrapper[data-group="2/B"] .col-parsel,
-        .table-wrapper[data-group="Müdürlük"] .col-tarih {
+        .table-wrapper[data-group="Müdürlük"] .col-tarih,
+        .table-wrapper[data-group="GÜNCELLEME(2026)"] .col-alan,
+        .table-wrapper[data-group="GÜNCELLEME(2026)"] .col-uygulama,
+        .table-wrapper[data-group="GÜNCELLEME(2026)"] .col-tarih {
             display: none;
         }
 
@@ -348,6 +351,9 @@
         #notlar-table td {
             white-space: pre-wrap; /* Notların düzgün görünmesi için */
             word-break: break-word;
+            padding: 4px 8px; /* Boşluklar azaltıldı */
+            vertical-align: top;
+            line-height: 1.3; /* Satır aralığı sıkılaştırıldı */
         }
         .note-row:hover {
             background-color: #e9ecef;
@@ -489,12 +495,14 @@
         .card-2b { background-color: #007bff; }
         .card-guncelleme { background-color: #28a745; }
         .card-mudurluk { background-color: #fd7e14; }
+        .card-guncelleme2026 { background-color: #6f42c1; } /* Mor renk - Yeni Kart */
         
         .card-2b.expanded { background-color: #e7f1ff; border-left: 5px solid #007bff; }
         .card-guncelleme.expanded { background-color: #d4edda; border-left: 5px solid #28a745; }
         .card-mudurluk.expanded { background-color: #ffe8d6; border-left: 5px solid #fd7e14; }
+        .card-guncelleme2026.expanded { background-color: #e2d9f3; border-left: 5px solid #6f42c1; }
         
-        .card-2b.expanded h3, .card-guncelleme.expanded h3, .card-mudurluk.expanded h3 { color: #343a40; }
+        .card-2b.expanded h3, .card-guncelleme.expanded h3, .card-mudurluk.expanded h3, .card-guncelleme2026.expanded h3 { color: #343a40; }
         
 
         /* Uyarı Stilleri */
@@ -914,7 +922,7 @@ function handleTableChange(event) {
             }
 
             const dataRecord = isTakipData.find(r => r['İLÇE'] == ilce && r['BİRİM'] == birim);
-            if (dataRecord && (dataRecord['UYGULAMA'] === 'GÜNCELLEME')) {
+            if (dataRecord && (dataRecord['UYGULAMA'] === 'GÜNCELLEME' || dataRecord['UYGULAMA'] === 'GÜNCELLEME(2026)')) {
                 const detailRow = document.querySelector(`#guncellemeDetailTable tr[data-row-key="${rowKey}"]`);
                 if (detailRow) {
                     detailRow.classList.toggle('tamamlandi', target.checked);
@@ -1107,12 +1115,15 @@ async function fetchFromGitHub() {
         isTakipData = XLSX.utils.sheet_to_json(workbook.Sheets['İş Takip Listesi'] || {})
             .filter(row => row['İLÇE'] && row['BİRİM']); // Filter empty rows
 
-        // GÜNCELLEME Sayfasını Okuma
-        const rawGuncellemeData = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme'] || {})
+        // GÜNCELLEME ve GÜNCELLEME(2026) Sayfalarını Okuma
+        const guncellemeOld = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme'] || {});
+        const guncelleme2026 = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme(2026)'] || {});
+        
+        // Detay verilerini birleştir ve boş satırları temizle + TEKRARLAYANLARI KALDIR
+        const rawGuncellemeData = [...guncellemeOld, ...guncelleme2026]
              .filter(row => row['İLÇE'] && row['BİRİM']);
         
-        // Sadece 'guncellemeOld' kullanılıyor, 2026 kaldırıldı.
-        // Benzersiz hale getir (İlçe ve Birim kombinasyonuna göre) - Opsiyonel ama iyi olur
+        // Benzersiz hale getir (İlçe ve Birim kombinasyonuna göre)
         const uniqueGuncellemeMap = new Map();
         rawGuncellemeData.forEach(item => {
             const key = `${item['İLÇE'].toString().trim().toUpperCase()}|${item['BİRİM'].toString().trim().toUpperCase()}`;
@@ -1188,7 +1199,7 @@ function renderAllTables(mainData, detailData) {
         tableWrapper.className = 'table-wrapper';
         tableWrapper.dataset.group = uygulama;
         const table = document.createElement('table');
-        const blokSayisiHeader = (uygulama === 'GÜNCELLEME') ? 'İDÖ' : 'BLOK';
+        const blokSayisiHeader = (uygulama === 'GÜNCELLEME' || uygulama === 'GÜNCELLEME(2026)') ? 'İDÖ' : 'BLOK';
         
         const grupParsel = calculateColumnSum(groupedData[uygulama], 'PARSEL SAYISI');
         const grupBlok = calculateColumnSum(groupedData[uygulama], 'BLOK SAYISI');
@@ -1380,6 +1391,12 @@ function createGeneralReportsUI() {
     btnGuncelleme.innerHTML = '📄 Güncelleme Raporu Oluştur';
     btnGuncelleme.onclick = () => generateBulkReport('GÜNCELLEME');
     
+    const btnGuncelleme2026 = document.createElement('button');
+    btnGuncelleme2026.className = 'success';
+    btnGuncelleme2026.style.backgroundColor = '#6f42c1';
+    btnGuncelleme2026.innerHTML = '📄 Güncelleme(2026) Raporu';
+    btnGuncelleme2026.onclick = () => generateBulkReport('GÜNCELLEME(2026)');
+
     const btn2B = document.createElement('button');
     btn2B.className = 'info';
     btn2B.innerHTML = '📄 2/B Raporu Oluştur';
@@ -1400,6 +1417,7 @@ function createGeneralReportsUI() {
     };
 
     controls.appendChild(btnGuncelleme);
+    controls.appendChild(btnGuncelleme2026);
     controls.appendChild(btn2B);
     controls.appendChild(btnMudurluk);
     controls.appendChild(btnKopyala);
@@ -1435,7 +1453,7 @@ function generateBulkReport(category) {
     // Başlık
     let reportText = "";
 
-    if (category === 'GÜNCELLEME') {
+    if (category === 'GÜNCELLEME' || category === 'GÜNCELLEME(2026)') {
         // GÜNCELLEME İÇİN ÖZEL BİLGİ NOTU FORMATI
         
         let toplamBirim = reportData.length;
@@ -1558,7 +1576,7 @@ ${category} kapsamında toplam **${reportData.length}** adet iş listelenmiştir
    - İşe Başlama: ${fd(job['İŞE BAŞLAMA/YER TESLİMİ'])} | Bitiş: ${fd(job['İHALE BİTİŞ TARİHİ'])}
 `;
 
-        if (category === 'GÜNCELLEME') {
+        if (category === 'GÜNCELLEME' || category === 'GÜNCELLEME(2026)') {
             reportText += `   - Arazi Yersel Ölçüm: ${fd(detailRow['ARAZİ YERSEL ÖLÇÜM TARİHİ(YAPILAN)'])}
    - Uçuş Tarihi: ${fd(detailRow['UÇUŞ TARİHİ(YAPILAN)'])}
    - Uçuş Kıymetlendirme: ${detailRow['UÇUŞ KIYMETLENDİRME DURUM'] || '-'}
@@ -1807,7 +1825,7 @@ function createRowElement(data = {}, tabName) {
         <td class="action-btn-cell">
             <button class="not-btn ${hasNote ? 'has-note' : ''}" title="Not Ekle/Görüntüle">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-journal-text" viewBox="0 0 16 16">
-                    <path d="M5 10.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z"/>
+                    <path d="M5 10.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z"/>
                     <path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2z"/>
                     <path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1H2v1h-.5a.5.5 0 0 1 0-1H1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1H2v1h-.5a.5.5 0 0 1 0-1H1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1H2v1h-.5a.5.5 0 0 1 0-1H1z"/>
                 </svg>
@@ -1849,7 +1867,7 @@ function createGuncellemeDetailRowElement(data) {
     const rowKey = `${data['İLÇE']}|${data['BİRİM']}`;
     newRow.dataset.rowKey = rowKey;
 
-    const mainDataRow = isTakipData.find(r => r['İLÇE'] === data['İLÇE'] && r['BİRİM'] === data['BİRİM'] && r['UYGULAMA'] === 'GÜNCELLEME');
+    const mainDataRow = isTakipData.find(r => r['İLÇE'] === data['İLÇE'] && r['BİRİM'] === data['BİRİM'] && (r['UYGULAMA'] === 'GÜNCELLEME' || r['UYGULAMA'] === 'GÜNCELLEME(2026)'));
     if (mainDataRow && mainDataRow['Tamamlandı'] === 'EVET') {
         newRow.classList.add('tamamlandi');
     }
@@ -2302,10 +2320,11 @@ function saveNoteChanges() {
 
     if (dataRow) {
         const newNote = document.getElementById('not-modal-textarea').value;
-        dataRow['NOTLAR'] = newNote;
+        const cleanedNewNote = newNote.replace(/(\r\n|\n|\r)+/g, '\n').trim();
+        dataRow['NOTLAR'] = cleanedNewNote;
 
         document.querySelectorAll(`tr[data-row-key="${currentEditingRowKey}"] .not-btn`).forEach(btn => {
-            btn.classList.toggle('has-note', newNote && newNote.trim() !== '');
+            btn.classList.toggle('has-note', cleanedNewNote && cleanedNewNote.trim() !== '');
         });
 
         markAsDirty();
@@ -2378,15 +2397,24 @@ function createNotesTable() {
     
     const notesWithData = isTakipData
         .filter(row => row['NOTLAR'] && row['NOTLAR'].trim() !== '')
-        .map(row => ({ ...row, extractedDate: extractDateFromNote(row['NOTLAR']) }));
+        .map(row => {
+            const rawNote = row['NOTLAR'] || '';
+            // Ardışık satır boşluklarını temizle
+            const cleaned = rawNote.replace(/(\r\n|\n|\r)+/g, '\n').trim();
+            return { 
+                ...row, 
+                cleanNote: cleaned,
+                extractedDate: extractDateFromNote(cleaned) 
+            };
+        });
 
     notesWithData.sort((a, b) => {
         const dateA = a.extractedDate;
         const dateB = b.extractedDate;
-        if (dateA && dateB) return dateA - dateB; // Önce tarihli olanlar, tarihe göre artan
-        if (dateA) return -1; // Tarihi olan, olmayandan önce
-        if (dateB) return 1;  // Tarihi olmayan, olandan sonra
-        return 0; // İkisinde de tarih yoksa sıralama değişmez
+        if (dateA && dateB) return dateA - dateB; // Tarihe göre sırala (Eskiden yeniye)
+        if (dateA) return -1;
+        if (dateB) return 1;
+        return 0;
     });
 
     notesWithData.forEach(row => {
@@ -2415,7 +2443,7 @@ function createNotesTable() {
             <td>${row['İLÇE']}</td>
             <td>${row['BİRİM']}</td>
             <td class="muhendis-cell">${engineers}</td>
-            <td class="note-cell">${row['NOTLAR']}</td>
+            <td class="note-cell">${row['cleanNote']}</td>
         `;
         
         tr.addEventListener('click', (e) => {
@@ -2424,7 +2452,7 @@ function createNotesTable() {
             const noteCell = tr.querySelector('.note-cell');
             if (noteCell.querySelector('.note-edit-container')) return;
             
-            const noteText = isTakipData.find(r => `${r['İLÇE']}|${r['BİRİM']}` === rowKey)['NOTLAR'];
+            const noteText = row['cleanNote'];
 
             noteCell.innerHTML = `
                 <div class="note-edit-container">
@@ -2438,24 +2466,25 @@ function createNotesTable() {
 
             noteCell.querySelector('.note-save-inline').addEventListener('click', () => {
                 const newNote = noteCell.querySelector('textarea').value;
+                const cleanedNewNote = newNote.replace(/(\r\n|\n|\r)+/g, '\n').trim();
+                
                 const dataRow = isTakipData.find(r => `${r['İLÇE']}|${r['BİRİM']}` === rowKey);
-                dataRow['NOTLAR'] = newNote;
-                noteCell.innerHTML = newNote;
+                dataRow['NOTLAR'] = cleanedNewNote;
+                row['cleanNote'] = cleanedNewNote;
+                noteCell.innerHTML = cleanedNewNote;
                 
                 document.querySelectorAll(`tr[data-row-key="${rowKey}"] .not-btn`).forEach(btn => {
-                    btn.classList.toggle('has-note', newNote && newNote.trim() !== '');
+                    btn.classList.toggle('has-note', cleanedNewNote && cleanedNewNote.trim() !== '');
                 });
                 
-                if (!newNote || newNote.trim() === '') {
+                if (!cleanedNewNote || cleanedNewNote.trim() === '') {
                     tr.remove();
                 }
                 markAsDirty();
                 showToast('Not güncellendi. Kaydetmeyi unutmayın.');
-                // Notlar tablosunu yeniden sırala ve çiz
-                const notlarWrapper = document.getElementById('notlar-wrapper');
-                notlarWrapper.innerHTML = '';
-                notlarWrapper.appendChild(createNotesTable());
-
+                // Yeniden sıralamak için tabloyu tekrar oluşturabiliriz ama
+                // performans için şimdilik sadece içeriği güncelliyoruz.
+                // Tam yeniden çizim gerekirse buraya createNotesTable() eklenebilir.
             });
 
             noteCell.querySelector('.note-delete-inline').addEventListener('click', () => {
@@ -2481,31 +2510,38 @@ function createNotesTable() {
             const rowKey = row.dataset.rowKey;
             const uygulama = row.dataset.uygulama;
 
-            let targetTab = 'Tümü';
-            document.querySelectorAll('#tabs .tab-btn').forEach(btn => {
-                if(btn.textContent.startsWith(uygulama)){
-                    targetTab = uygulama;
-                }
-            });
+            let targetTab = 'Tümü'; // Varsayılan, ancak Tümü sekmesi kalktıysa dikkat
+            
+            // Hedef sekmeyi bulma mantığı
+            const tabBtn = Array.from(document.querySelectorAll('#tabs .tab-btn')).find(btn => 
+                btn.textContent.includes(uygulama) || btn.dataset.uygulama === uygulama
+            );
+            
+            if(tabBtn) {
+                 targetTab = tabBtn.dataset.uygulama;
+            } else if (uygulama === 'GÜNCELLEME') {
+                 targetTab = 'GÜNCELLEME';
+            }
 
             const dataRow = isTakipData.find(r => `${r['İLÇE']}|${r['BİRİM']}` === rowKey);
             if(dataRow && dataRow['İHALELİ/MÜDÜRLÜK'] === 'Müdürlük') {
                 targetTab = 'Müdürlük';
             }
             
-            showTab(targetTab);
-
-            setTimeout(() => {
-                const targetRow = document.querySelector(`.table-wrapper.active tr[data-row-key="${rowKey}"]`);
-                if(targetRow){
-                    targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    targetRow.style.transition = 'background-color 0.5s';
-                    targetRow.style.backgroundColor = '#fff3cd';
-                    setTimeout(() => {
-                        targetRow.style.backgroundColor = '';
-                    }, 2000);
-                }
-            }, 100);
+            if(targetTab) {
+                showTab(targetTab);
+                setTimeout(() => {
+                    const targetRow = document.querySelector(`.table-wrapper.active tr[data-row-key="${rowKey}"]`);
+                    if(targetRow){
+                        targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        targetRow.style.transition = 'background-color 0.5s';
+                        targetRow.style.backgroundColor = '#fff3cd';
+                        setTimeout(() => {
+                            targetRow.style.backgroundColor = '';
+                        }, 2000);
+                    }
+                }, 100);
+            }
         }
     });
 
@@ -2573,12 +2609,16 @@ function excelIndirNotlar() {
                 })
                 .join(', ');
             
+            // Excel çıktısı için de notu temizle
+            const rawNote = row['NOTLAR'] || '';
+            const cleanedNote = rawNote.replace(/(\r\n|\n|\r)+/g, '\n').trim();
+
             excelData.push([
                 row['UYGULAMA'],
                 row['İLÇE'],
                 row['BİRİM'],
                 engineers,
-                row['NOTLAR']
+                cleanedNote
             ]);
         });
         excelData.push([]); // İlçeler arasına boş satır
