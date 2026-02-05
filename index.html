@@ -1123,16 +1123,29 @@ async function fetchFromGitHub() {
         uygulamaListesi = readSheetAsList(workbook, 'Uygulama');
         parseLists(workbook, 'Liste');
 
-        isTakipData = XLSX.utils.sheet_to_json(workbook.Sheets['İş Takip Listesi'] || {})
-            .filter(row => row['İLÇE'] && row['BİRİM']); // Filter empty rows
+        // İş Takip Listesi Okuma ve Normalizasyon
+        let rawIsTakip = XLSX.utils.sheet_to_json(workbook.Sheets['İş Takip Listesi'] || {});
+        isTakipData = rawIsTakip.map(row => {
+            // MAHALLE sütunu varsa BİRİM olarak kabul et
+            if (row['MAHALLE'] && !row['BİRİM']) row['BİRİM'] = row['MAHALLE'];
+            return row;
+        }).filter(row => row['İLÇE'] && row['BİRİM']);
 
-        // GÜNCELLEME ve GÜNCELLEME(2026) Sayfalarını Okuma
-        const guncellemeOld = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme'] || {});
-        const guncelleme2026 = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme(2026)'] || {});
+        // GÜNCELLEME Sayfasını Okuma ve Normalizasyon
+        let rawGuncellemeSheet = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme'] || {});
         
-        // Detay verilerini birleştir ve boş satırları temizle + TEKRARLAYANLARI KALDIR
-        const rawGuncellemeData = [...guncellemeOld, ...guncelleme2026]
-             .filter(row => row['İLÇE'] && row['BİRİM']);
+        // Eğer Güncelleme sayfası boşsa ve DURUM sayfası varsa (CSV'den anlaşılan) oraya bak
+        if (rawGuncellemeSheet.length === 0 && workbook.Sheets['DURUM']) {
+             rawGuncellemeSheet = XLSX.utils.sheet_to_json(workbook.Sheets['DURUM']);
+        }
+
+        const rawGuncellemeData = rawGuncellemeSheet.map(row => {
+             // MAHALLE -> BİRİM
+             if (row['MAHALLE'] && !row['BİRİM']) row['BİRİM'] = row['MAHALLE'];
+             // UYGULAMA sütunu boşsa otomatik 'GÜNCELLEME' ata
+             if (!row['UYGULAMA']) row['UYGULAMA'] = 'GÜNCELLEME';
+             return row;
+        }).filter(row => row['İLÇE'] && row['BİRİM']);
         
         // Benzersiz hale getir (İlçe ve Birim kombinasyonuna göre)
         const uniqueGuncellemeMap = new Map();
@@ -1402,12 +1415,6 @@ function createGeneralReportsUI() {
     btnGuncelleme.innerHTML = '📄 Güncelleme Raporu Oluştur';
     btnGuncelleme.onclick = () => generateBulkReport('GÜNCELLEME');
     
-    const btnGuncelleme2026 = document.createElement('button');
-    btnGuncelleme2026.className = 'success';
-    btnGuncelleme2026.style.backgroundColor = '#6f42c1';
-    btnGuncelleme2026.innerHTML = '📄 Güncelleme(2026) Raporu';
-    btnGuncelleme2026.onclick = () => generateBulkReport('GÜNCELLEME(2026)');
-
     const btn2B = document.createElement('button');
     btn2B.className = 'info';
     btn2B.innerHTML = '📄 2/B Raporu Oluştur';
@@ -1428,7 +1435,6 @@ function createGeneralReportsUI() {
     };
 
     controls.appendChild(btnGuncelleme);
-    controls.appendChild(btnGuncelleme2026);
     controls.appendChild(btn2B);
     controls.appendChild(btnMudurluk);
     controls.appendChild(btnKopyala);
@@ -1836,7 +1842,7 @@ function createRowElement(data = {}, tabName) {
         <td class="action-btn-cell">
             <button class="not-btn ${hasNote ? 'has-note' : ''}" title="Not Ekle/Görüntüle">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-journal-text" viewBox="0 0 16 16">
-                    <path d="M5 10.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z"/>
+                    <path d="M5 10.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z"/>
                     <path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2z"/>
                     <path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1H2v1h-.5a.5.5 0 0 1 0-1H1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1H2v1h-.5a.5.5 0 0 1 0 1H1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1H2v1h-.5a.5.5 0 0 1 0-1H1z"/>
                 </svg>
@@ -2412,9 +2418,40 @@ function createNotesTable() {
             const rawNote = row['NOTLAR'] || '';
             // Ardışık satır boşluklarını temizle
             const cleaned = rawNote.replace(/(\r\n|\n|\r)+/g, '\n').trim();
+            // Numaralandırma işlemi
+            const lines = cleaned.split('\n');
+            let formattedNote = '';
+            
+            // Eğer zaten numaralı değilse numaralandır
+            if(lines.length > 0 && !/^\d+\./.test(lines[0])) {
+                 formattedNote = '<ol class="note-list">';
+                 lines.forEach(line => {
+                     if(line.trim() !== '') {
+                         formattedNote += `<li>${line.trim()}</li>`;
+                     }
+                 });
+                 formattedNote += '</ol>';
+            } else {
+                 formattedNote = cleaned; // Zaten formatlıysa dokunma (ancak genellikle düz metin gelir)
+            }
+            // Biz burada sadece düz metin olarak kaydediyoruz, gösterirken HTML listesi yapıyoruz
+            // Ancak, düzenleme modunda düz metin görünmeli.
+            // Bu yüzden "displayHTML" diye ayrı bir alan tutalım.
+            
+             let displayHTML = '<ol class="note-list">';
+                 lines.forEach(line => {
+                     // Var olan numaraları temizle (örn: "1. Not" -> "Not")
+                     const content = line.replace(/^\d+[\.\)]\s*/, '').trim();
+                     if(content !== '') {
+                         displayHTML += `<li>${content}</li>`;
+                     }
+                 });
+                 displayHTML += '</ol>';
+
             return { 
                 ...row, 
                 cleanNote: cleaned,
+                displayHTML: displayHTML,
                 extractedDate: extractDateFromNote(cleaned) 
             };
         });
@@ -2454,7 +2491,7 @@ function createNotesTable() {
             <td>${row['İLÇE']}</td>
             <td>${row['BİRİM']}</td>
             <td class="muhendis-cell">${engineers}</td>
-            <td class="note-cell">${row['cleanNote']}</td>
+            <td class="note-cell">${row['displayHTML']}</td>
         `;
         
         tr.addEventListener('click', (e) => {
@@ -2463,11 +2500,12 @@ function createNotesTable() {
             const noteCell = tr.querySelector('.note-cell');
             if (noteCell.querySelector('.note-edit-container')) return;
             
+            // Düzenleme modunda ham metni (temizlenmiş) göster
             const noteText = row['cleanNote'];
 
             noteCell.innerHTML = `
                 <div class="note-edit-container">
-                    <textarea rows="4">${noteText || ''}</textarea>
+                    <textarea rows="6">${noteText || ''}</textarea>
                     <div class="note-edit-buttons">
                         <button class="note-delete-inline danger">Sil</button>
                         <button class="note-save-inline success">Kaydet</button>
@@ -2475,14 +2513,28 @@ function createNotesTable() {
                 </div>
             `;
 
-            noteCell.querySelector('.note-save-inline').addEventListener('click', () => {
+            noteCell.querySelector('.note-save-inline').addEventListener('click', (e) => {
+                e.stopPropagation(); // Satır tıklamasını engelle
                 const newNote = noteCell.querySelector('textarea').value;
                 const cleanedNewNote = newNote.replace(/(\r\n|\n|\r)+/g, '\n').trim();
                 
                 const dataRow = isTakipData.find(r => `${r['İLÇE']}|${r['BİRİM']}` === rowKey);
                 dataRow['NOTLAR'] = cleanedNewNote;
+                
+                // Ekranı güncelle
+                const lines = cleanedNewNote.split('\n');
+                let newDisplayHTML = '<ol class="note-list">';
+                 lines.forEach(line => {
+                     const content = line.replace(/^\d+[\.\)]\s*/, '').trim();
+                     if(content !== '') {
+                         newDisplayHTML += `<li>${content}</li>`;
+                     }
+                 });
+                 newDisplayHTML += '</ol>';
+                 
                 row['cleanNote'] = cleanedNewNote;
-                noteCell.innerHTML = cleanedNewNote;
+                row['displayHTML'] = newDisplayHTML;
+                noteCell.innerHTML = newDisplayHTML;
                 
                 document.querySelectorAll(`tr[data-row-key="${rowKey}"] .not-btn`).forEach(btn => {
                     btn.classList.toggle('has-note', cleanedNewNote && cleanedNewNote.trim() !== '');
@@ -2493,12 +2545,10 @@ function createNotesTable() {
                 }
                 markAsDirty();
                 showToast('Not güncellendi. Kaydetmeyi unutmayın.');
-                // Yeniden sıralamak için tabloyu tekrar oluşturabiliriz ama
-                // performans için şimdilik sadece içeriği güncelliyoruz.
-                // Tam yeniden çizim gerekirse buraya createNotesTable() eklenebilir.
             });
 
-            noteCell.querySelector('.note-delete-inline').addEventListener('click', () => {
+            noteCell.querySelector('.note-delete-inline').addEventListener('click', (e) => {
+                e.stopPropagation();
                 const dataRow = isTakipData.find(r => `${r['İLÇE']}|${r['BİRİM']}` === rowKey);
                 dataRow['NOTLAR'] = '';
                 tr.remove();
@@ -2508,6 +2558,9 @@ function createNotesTable() {
                 markAsDirty();
                 showToast('Not silindi. Kaydetmeyi unutmayın.');
             });
+            
+            // Textarea'ya tıklandığında satır olayını engelle
+            noteCell.querySelector('textarea').addEventListener('click', (e) => e.stopPropagation());
         });
 
 
@@ -2516,14 +2569,16 @@ function createNotesTable() {
 
     // Satır atlama işlevselliği
     tbody.addEventListener('click', (e) => {
+        // Eğer tıklanan element düzenleme alanındaysa işlem yapma
+        if (e.target.closest('.note-edit-container')) return;
+
         const row = e.target.closest('.note-row');
-        if (row && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'BUTTON') {
+        if (row) {
             const rowKey = row.dataset.rowKey;
             const uygulama = row.dataset.uygulama;
 
-            let targetTab = 'Tümü'; // Varsayılan, ancak Tümü sekmesi kalktıysa dikkat
+            let targetTab = 'Tümü'; 
             
-            // Hedef sekmeyi bulma mantığı
             const tabBtn = Array.from(document.querySelectorAll('#tabs .tab-btn')).find(btn => 
                 btn.textContent.includes(uygulama) || btn.dataset.uygulama === uygulama
             );
@@ -2620,16 +2675,25 @@ function excelIndirNotlar() {
                 })
                 .join(', ');
             
-            // Excel çıktısı için de notu temizle
+            // Excel çıktısı için de notu temizle ve numaralandır
             const rawNote = row['NOTLAR'] || '';
             const cleanedNote = rawNote.replace(/(\r\n|\n|\r)+/g, '\n').trim();
+            const lines = cleanedNote.split('\n');
+            let excelNoteFormat = '';
+            lines.forEach((line, index) => {
+                 const content = line.replace(/^\d+[\.\)]\s*/, '').trim();
+                 if(content !== '') {
+                     excelNoteFormat += `${index + 1}. ${content}\n`;
+                 }
+            });
+
 
             excelData.push([
                 row['UYGULAMA'],
                 row['İLÇE'],
                 row['BİRİM'],
                 engineers,
-                cleanedNote
+                excelNoteFormat.trim()
             ]);
         });
         excelData.push([]); // İlçeler arasına boş satır
