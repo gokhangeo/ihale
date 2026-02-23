@@ -69,13 +69,15 @@
         .check-cell { width: 40px; text-align: center; }
         .tamamlandi { text-decoration: red line-through; text-decoration-thickness: 2px; opacity: 0.6; background-color: #f0f0f0 !important; }
         .tamamlandi select, .tamamlandi input, .tamamlandi .select2-container,
-        #notlar-table tr.tamamlandi td { /* Notlar tablosundaki tamamlananları da çiz */
+        #notlar-table tr.tamamlandi td,
+        #komisyonTable tr.tamamlandi td { 
             text-decoration: red line-through;
             text-decoration-thickness: 2px;
             opacity: 0.6;
         }
-         #notlar-table tr.tamamlandi {
-             background-color: #f0f0f0 !important; /* Arka planı da hafif gri yap */
+         #notlar-table tr.tamamlandi,
+         #komisyonTable tr.tamamlandi {
+             background-color: #f0f0f0 !important; 
          }
 
         .loader { border: 5px solid #f3f3f3; border-radius: 50%; border-top: 5px solid #3498db; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 20px auto; }
@@ -590,7 +592,7 @@ const GITHUB_TOKEN = token_part1 + token_part2;
 const API_URL = `https://api.github.com/repos/${GITHUB_KULLANICI_ADI}/${GITHUB_REPO_ADI}/contents/${DOSYA_YOLU}`;
 let currentFileSHA = '';
 let personelListesi = [], fullPersonelListesi = [], muhendisListesi = [], teknikerListesi = [], ilceListesi = [], uygulamaListesi = [];
-let guncellemeData = [], isTakipData = [];
+let guncellemeData = [], isTakipData = [], komisyonData = [];
 let ucusKiyDurumList = [], komisyonDurumList = [], degerlendirmeDurumList = [];
 
 let durumlar = [];
@@ -603,6 +605,7 @@ const DISPLAY_HEADERS_DETAIL = ['İLÇE', 'BİRİM', 'PARSEL SAYISI', 'İDÖ PAR
 
 const STICKY_COLS_COUNT = 3; // Onay Kutusu, İlçe, Birim
 let currentEditingRowKey = null;
+let isEditingKomisyon = false; // Komisyon personeli düzenlenip düzenlenmediğini takip eder
 
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -739,6 +742,7 @@ function handleTableClick(event) {
     const button = target.closest('button');
     if (button) { // Handle button clicks first
         if (button.classList.contains('personel-info-btn')) {
+            isEditingKomisyon = false; // Normal personel seçimi
             currentEditingRowKey = button.closest('tr').dataset.rowKey;
             const dataRow = isTakipData.find(r => r._ui_id === currentEditingRowKey);
 
@@ -752,6 +756,26 @@ function handleTableClick(event) {
                     personelModalSelect.append(new Option(person, person, false, false));
                 });
                 const selectedPersonel = dataRow['GÖREVLİ PERSONELLER'] ? String(dataRow['GÖREVLİ PERSONELLER']).split(', ').map(name => {
+                    return fullPersonelListesi.find(p => p.toUpperCase().startsWith(name.trim().toUpperCase())) || name.trim();
+                }) : [];
+                personelModalSelect.val(selectedPersonel).trigger('change');
+                document.getElementById('personel-modal').style.display = 'flex';
+            }
+        } else if (button.classList.contains('komisyon-personel-btn')) {
+            isEditingKomisyon = true; // Komisyon personeli seçimi
+            currentEditingRowKey = button.closest('tr').dataset.rowKey;
+            const dataRow = komisyonData.find(r => r._ui_id === currentEditingRowKey);
+
+            if (dataRow) {
+                const ilce = dataRow['İLÇE'];
+                const birim = dataRow['BİRİM'];
+                document.getElementById('personel-modal-header').textContent = `${ilce} - ${birim} Komisyon Yönetimi`;
+                const personelModalSelect = $('#personel-modal-select');
+                personelModalSelect.html('');
+                fullPersonelListesi.forEach(person => {
+                    personelModalSelect.append(new Option(person, person, false, false));
+                });
+                const selectedPersonel = dataRow['KOMİSYON GÖREVLİLERİ'] ? String(dataRow['KOMİSYON GÖREVLİLERİ']).split(', ').map(name => {
                     return fullPersonelListesi.find(p => p.toUpperCase().startsWith(name.trim().toUpperCase())) || name.trim();
                 }) : [];
                 personelModalSelect.val(selectedPersonel).trigger('change');
@@ -844,10 +868,11 @@ function handleTableChange(event) {
                 notRow.classList.toggle('tamamlandi', target.checked);
             }
             
-            // Detail table linking relies on _ui_id matching if passed correctly, 
-            // but currently detail table uses separate IDs. Cross-table visual sync 
-            // will work if IDs are aligned or logic changes. 
-            // For now, keeping as is to ensure data integrity.
+            // Komisyon tablosunu da senkronize et
+            const komisyonRow = document.querySelector(`#komisyonTable tr[data-row-key="${rowKey}"]`);
+            if (komisyonRow) {
+                komisyonRow.classList.toggle('tamamlandi', target.checked);
+            }
         }
 
         markAsDirty();
@@ -923,7 +948,14 @@ function displayWarnings() {
                     const dayDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
                     if (dayDiff > 30) {
-                        warnings.kesinAskiBitti.push({ilce: detailRow['İLÇE'], birim: detailRow['BİRİM']});
+                        // Ana tablodan işin mevcut durumunu buluyoruz
+                        const mainDataRow = isTakipData.find(r => r['İLÇE'] === detailRow['İLÇE'] && r['BİRİM'] === detailRow['BİRİM']);
+                        const durum = mainDataRow ? mainDataRow['DURUMU'] : '';
+                        
+                        // Durumu 'DEVİR YAPILDI' değilse uyarıya ekle
+                        if (durum !== 'DEVİR YAPILDI') {
+                            warnings.kesinAskiBitti.push({ilce: detailRow['İLÇE'], birim: detailRow['BİRİM']});
+                        }
                     }
                 }
             } catch(e) { /* ignore */ }
@@ -937,8 +969,6 @@ function displayWarnings() {
         link.textContent = `${job.ilce} - ${job.birim}`;
         link.onclick = () => {
              // İlgili işi bul ve detay sekmesine atla
-             // Note: finding by rowkey assumes ID matching which is tricky here.
-             // We fallback to searching text.
              showTab('Güncelleme Detay');
              // Scrolling logic simplified for now
         };
@@ -1070,13 +1100,26 @@ async function fetchFromGitHub() {
         const guncelleme2026 = XLSX.utils.sheet_to_json(workbook.Sheets['Güncelleme(2026)'] || {});
         
         // Detay verilerini birleştir ve boş satırları temizle + ID ATAMA
-        // TEKİLLEŞTİRME KALDIRILDI - TÜM VERİLER YÜKLENİYOR
         guncellemeData = [...guncellemeOld, ...guncelleme2026]
               .filter(row => row['İLÇE'] && row['BİRİM'])
               .map((row, index) => {
                   row._ui_id = 'detail_' + index; // Benzersiz ID Ata
                   return row;
               });
+
+        // KOMİSYON SAYFASI OKUMA
+        const rawKomisyon = workbook.Sheets['Komisyon'] ? XLSX.utils.sheet_to_json(workbook.Sheets['Komisyon']) : [];
+        komisyonData = isTakipData
+            .filter(r => r['UYGULAMA'] === 'GÜNCELLEME' || r['UYGULAMA'] === 'GÜNCELLEME(2026)')
+            .map(job => {
+                const existing = rawKomisyon.find(k => k['İLÇE'] === job['İLÇE'] && k['BİRİM'] === job['BİRİM']);
+                return {
+                    _ui_id: job._ui_id,
+                    'İLÇE': job['İLÇE'],
+                    'BİRİM': job['BİRİM'],
+                    'KOMİSYON GÖREVLİLERİ': existing ? existing['KOMİSYON GÖREVLİLERİ'] : ''
+                };
+            });
         
         $('#personel-modal-select').select2({
             placeholder: "Personel Seçin",
@@ -1104,7 +1147,6 @@ async function fetchFromGitHub() {
              showTab('GÜNCELLEME'); 
         }
 
-
     } catch (error) {
         console.error("GitHub'dan veri çekme hatası:", error);
         document.getElementById('loader').style.display = 'none';
@@ -1130,8 +1172,6 @@ function renderAllTables(mainData, detailData) {
         return acc;
     }, {});
 
-    // "TÜMÜ" SEKMESİ KALDIRILDI
-    
     // Diğer Ana Sekmeler
     for (const uygulama in groupedData) {
         const tab = document.createElement('button');
@@ -1192,7 +1232,6 @@ function renderAllTables(mainData, detailData) {
         const grupBlok = calculateColumnSum(mudurlukIsleri, 'BLOK SAYISI');
         const grupAlan = calculateColumnSum(mudurlukIsleri, 'ALAN(Ha)').toFixed(2);
 
-        // Robot butonu sütunu kaldırıldı
         mudurlukTable.innerHTML = `<thead><tr>
             <th class="check-cell">&#10004;</th>
             <th class="col-ilce">İLÇE</th>
@@ -1214,7 +1253,6 @@ function renderAllTables(mainData, detailData) {
         mudurlukWrapper.appendChild(mudurlukTable);
         tableContainer.appendChild(mudurlukWrapper);
     }
-
 
     // "Güncelleme Detay" Sekmesi
     const detailTabBtn = document.createElement('button');
@@ -1266,6 +1304,54 @@ function renderAllTables(mainData, detailData) {
     detailTable.appendChild(detailTbody);
     detailWrapper.appendChild(detailTable);
     tableContainer.appendChild(detailWrapper);
+
+    // KOMİSYON SEKME EKLENTİSİ
+    const komisyonTabBtn = document.createElement('button');
+    komisyonTabBtn.className = 'tab-btn';
+    komisyonTabBtn.textContent = 'Komisyon';
+    komisyonTabBtn.dataset.uygulama = 'Komisyon';
+    komisyonTabBtn.onclick = () => showTab('Komisyon');
+    tabsContainer.appendChild(komisyonTabBtn);
+
+    const komisyonWrapper = document.createElement('div');
+    komisyonWrapper.className = 'table-wrapper';
+    komisyonWrapper.dataset.group = 'Komisyon';
+    const komisyonTable = document.createElement('table');
+    komisyonTable.id = 'komisyonTable';
+
+    komisyonTable.innerHTML = `<thead><tr>
+        <th class="col-ilce">İLÇE</th>
+        <th>BİRİM</th>
+        <th class="action-cell">GÖREVLENDİR</th>
+        <th>KOMİSYON GÖREVLİLERİ</th>
+    </tr></thead>`;
+
+    const komisyonTbody = document.createElement('tbody');
+    komisyonData.forEach(rowData => {
+        const tr = document.createElement('tr');
+        tr.dataset.rowKey = rowData._ui_id;
+        
+        const mainDataRow = isTakipData.find(r => r._ui_id === rowData._ui_id);
+        if (mainDataRow && mainDataRow['Tamamlandı'] === 'EVET') {
+            tr.classList.add('tamamlandi');
+        }
+
+        tr.innerHTML = `
+            <td>${rowData['İLÇE']}</td>
+            <td>${rowData['BİRİM']}</td>
+            <td class="action-btn-cell">
+                <button class="komisyon-personel-btn info" title="Komisyon Personellerini Yönet">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-person-lines-fill" viewBox="0 0 16 16"><path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-5 6s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H1zM11 3.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm.5 2.5a.5.5 0 0 0 0 1h4a.5.5 0 0 0 0-1h-4zm2 3a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1h-2zm0 3a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1h-2z"/></svg> Görevlendir
+                </button>
+            </td>
+            <td class="komisyon-liste-cell">${rowData['KOMİSYON GÖREVLİLERİ'] || '-'}</td>
+        `;
+        komisyonTbody.appendChild(tr);
+    });
+    komisyonTable.appendChild(komisyonTbody);
+    komisyonWrapper.appendChild(komisyonTable);
+    tableContainer.appendChild(komisyonWrapper);
+
 
     // Notlar Sekmesi
     const notlarTabBtn = document.createElement('button');
@@ -1582,7 +1668,6 @@ function saveToGitHub() {
     const btn = document.getElementById('githubKaydetBtn');
     btn.disabled = true;
     btn.innerHTML = 'Kaydediliyor...';
-    // setUyari("Değişiklikler gönderiliyor...", 'bilgi'); // Uyarı yerine container kullanılıyor
     const uyariContainer = document.getElementById('alerts-container'); // 'alerts-container'ı kullan
     uyariContainer.innerHTML = `<div class="alert-item info-alert"><strong>Durum:</strong> Değişiklikler gönderiliyor...</div>`;
     uyariContainer.style.display = 'block';
@@ -1627,6 +1712,14 @@ function saveToGitHub() {
             }
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(listSheetData), 'Liste');
 
+            // KOMİSYON VERİSİNİ YAZMA
+            const komisyonSheetData = komisyonData.map(row => ({
+                'İLÇE': row['İLÇE'],
+                'BİRİM': row['BİRİM'],
+                'KOMİSYON GÖREVLİLERİ': row['KOMİSYON GÖREVLİLERİ']
+            }));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(komisyonSheetData, {header: ['İLÇE', 'BİRİM', 'KOMİSYON GÖREVLİLERİ']}), 'Komisyon');
+
             const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'binary' });
             const base64Content = btoa(wbout);
 
@@ -1640,7 +1733,6 @@ function saveToGitHub() {
             
             const responseData = await putResponse.json();
             currentFileSHA = responseData.content.sha;
-            // setUyari('Değişiklikler başarıyla kaydedildi! Veriler yenileniyor...', 'basari');
             document.getElementById('uyari').style.display = 'block'; // Başarı mesajını göster
             markAsClean();
             
@@ -1650,7 +1742,6 @@ function saveToGitHub() {
 
         } catch (error) {
             console.error('GitHub\'a kaydetme hatası:', error);
-            // setUyari(`Kaydetme başarısız! Hata: ${error.message}`, 'hata');
             uyariContainer.innerHTML = `<div class="alert-item missing-date-alert"><strong>Hata:</strong> Kaydetme başarısız! ${error.message}</div>`;
             uyariContainer.style.display = 'block';
 
@@ -1665,7 +1756,7 @@ function getTableDataFromUI() {
     const data = [];
     const uniqueKeys = new Set();
     
-    document.querySelectorAll('.table-wrapper:not([data-group="Güncelleme Detay"]):not([data-group="Personel Raporu"]):not([data-group="Notlar"]):not([data-group="İlçe Raporu"]):not([data-group="Genel Raporlar"]) tbody tr:not(.group-header-row)').forEach(row => {
+    document.querySelectorAll('.table-wrapper:not([data-group="Güncelleme Detay"]):not([data-group="Personel Raporu"]):not([data-group="Notlar"]):not([data-group="İlçe Raporu"]):not([data-group="Genel Raporlar"]):not([data-group="Komisyon"]) tbody tr:not(.group-header-row)').forEach(row => {
         const key = row.dataset.rowKey;
         if (key && !uniqueKeys.has(key)) {
             const cells = row.querySelectorAll('td');
@@ -2016,7 +2107,7 @@ function filtrele() {
 }
 
 function checkRowMatch(row, aramaFilter, durumFilter) {
-    const isMainTable = row.closest('table').id !== 'guncellemeDetailTable';
+    const isMainTable = row.closest('table').id !== 'guncellemeDetailTable' && row.closest('table').id !== 'komisyonTable';
     
     if (isMainTable) {
         const cells = row.getElementsByTagName("td");
@@ -2027,7 +2118,6 @@ function checkRowMatch(row, aramaFilter, durumFilter) {
         
         // Arama için tüm personelleri içeren bir metin oluştur
         const key = row.dataset.rowKey;
-        // DÜZELTİLEN KISIM: Veri anahtarı artık _ui_id
         const dataRow = isTakipData.find(r => r._ui_id === key);
         const personelText = (dataRow && dataRow['GÖREVLİ PERSONELLER']) ? dataRow['GÖREVLİ PERSONELLER'].toLocaleUpperCase('tr-TR') : "";
 
@@ -2043,6 +2133,16 @@ function checkRowMatch(row, aramaFilter, durumFilter) {
         const textMatch = aramaFilter === '' || combinedText.includes(aramaFilter);
         const durumMatch = durumFilter === '' || durumText === durumFilter;
         return textMatch && durumMatch;
+    } else if (row.closest('table').id === 'komisyonTable') {
+        const cells = row.getElementsByTagName("td");
+        if (cells.length < 4) return true;
+        
+        const ilceText = cells[0].textContent.toLocaleUpperCase('tr-TR');
+        const birimText = cells[1].textContent.toLocaleUpperCase('tr-TR');
+        const personelText = cells[3].textContent.toLocaleUpperCase('tr-TR'); // Komisyon personeli sütunu
+        
+        const combinedText = `${ilceText} ${birimText} ${personelText}`;
+        return aramaFilter === '' || combinedText.includes(aramaFilter);
     } else { // Güncelleme Detay Tablosu
         const cells = row.getElementsByTagName("td");
         // Görünen hücre sayısı artık daha az
@@ -2051,10 +2151,6 @@ function checkRowMatch(row, aramaFilter, durumFilter) {
         const ilceInput = cells[0].querySelector('input'); // Gerçekte gizli ama veriyi buradan alıyoruz
         const birimInput = cells[1].querySelector('input');
         if(!ilceInput || !birimInput) return true;
-        
-        // Detay tablosunda personel araması için ana tablo ile eşleşme yapmak lazım ama
-        // Şu anki yapıda personel araması detay tablosunda aktif değil gibi görünüyor (combinedText içinde personelText boş gelebilir)
-        // Basitçe ilce/birim araması yapalım
         
         const ilceText = ilceInput.value.toLocaleUpperCase('tr-TR');
         const birimText = birimInput.value.toLocaleUpperCase('tr-TR');
@@ -2151,7 +2247,9 @@ function applyDistrictBorders() {
     let colorIndex = 0;
     let lastIlce = null;
     const isDetailTable = activeTable.id === 'guncellemeDetailTable';
-    const ilceColumnIndex = isDetailTable ? 0 : 1;
+    const isKomisyonTable = activeTable.id === 'komisyonTable';
+    // Komisyon tablosunda İlçe 0. index'te, ana tabloda 1, detayda 0.
+    const ilceColumnIndex = (isDetailTable || isKomisyonTable) ? 0 : 1;
     
     const tableWrapperRect = tableWrapper.getBoundingClientRect();
 
@@ -2161,12 +2259,17 @@ function applyDistrictBorders() {
         const ilceCell = row.cells[ilceColumnIndex];
         if (!ilceCell) return;
         
+        let currentIlce = "";
         const currentIlceElement = ilceCell.querySelector('select, input');
-        if (!currentIlceElement) return;
         
-        const currentIlce = currentIlceElement.value;
+        if (currentIlceElement) {
+            currentIlce = currentIlceElement.value;
+        } else {
+            // Komisyon tablosunda input yok düz metin
+            currentIlce = ilceCell.textContent;
+        }
 
-        if (currentIlce !== lastIlce) {
+        if (currentIlce && currentIlce !== lastIlce) {
             const color = colors[colorIndex % colors.length];
             row.style.borderTop = `3px solid ${color}`;
 
@@ -2177,7 +2280,7 @@ function applyDistrictBorders() {
             label.style.position = 'absolute';
             label.style.top = (row.getBoundingClientRect().top - tableWrapperRect.top - 9) + 'px';
 
-            if (isDetailTable) {
+            if (isDetailTable || isKomisyonTable) {
                  label.style.left = '5px';
             } else {
                 const referenceCell = row.cells[ilceColumnIndex - 1]; // Checkbox cell
@@ -2220,7 +2323,7 @@ function setupTopScrollbar() {
 }
 
 function applyStickyColumns() {
-    const activeTable = document.querySelector('.table-wrapper.active table:not(#guncellemeDetailTable)');
+    const activeTable = document.querySelector('.table-wrapper.active table:not(#guncellemeDetailTable):not(#komisyonTable)');
     if (!activeTable) return;
 
     activeTable.querySelectorAll('thead th, tbody tr:not(.group-header-row) td').forEach(cell => {
@@ -2244,22 +2347,45 @@ function applyStickyColumns() {
 
 function savePersonelChanges() {
     if (!currentEditingRowKey) return;
-    const dataRow = isTakipData.find(r => r._ui_id === currentEditingRowKey);
     
-    if(dataRow) {
-        const selectedPersonnel = $('#personel-modal-select').val() || [];
-        const personnelWithoutTitles = selectedPersonnel.map(p => p.replace(/ \(.+\)$/, '').trim());
-        dataRow['GÖREVLİ PERSONELLER'] = personnelWithoutTitles.join(', ');
-        
-        const rowInTable = document.querySelector(`tr[data-row-key="${currentEditingRowKey}"]`);
-        if (rowInTable) {
-            const hiddenSelect = $(rowInTable).find('.personel-select');
-            hiddenSelect.val(selectedPersonnel).trigger('change.select2');
-        }
+    const selectedPersonnel = $('#personel-modal-select').val() || [];
+    const personnelWithoutTitles = selectedPersonnel.map(p => p.replace(/ \(.+\)$/, '').trim());
 
-        markAsDirty();
-        document.getElementById('personel-modal').style.display = 'none';
-        showToast('Personel listesi güncellendi. Kaydetmeyi unutmayın.');
+    if (isEditingKomisyon) {
+        // Komisyon personeli güncelleme
+        const dataRow = komisyonData.find(r => r._ui_id === currentEditingRowKey);
+        if (dataRow) {
+            dataRow['KOMİSYON GÖREVLİLERİ'] = personnelWithoutTitles.join(', ');
+            
+            // Tablodaki arayüzü anında güncelle
+            const rowInTable = document.querySelector(`#komisyonTable tr[data-row-key="${currentEditingRowKey}"]`);
+            if (rowInTable) {
+                const cell = rowInTable.querySelector('.komisyon-liste-cell');
+                if (cell) cell.textContent = dataRow['KOMİSYON GÖREVLİLERİ'] || '-';
+            }
+            
+            markAsDirty();
+            document.getElementById('personel-modal').style.display = 'none';
+            showToast('Komisyon listesi güncellendi. Kaydetmeyi unutmayın.');
+        }
+        isEditingKomisyon = false; // Flag'i sıfırla
+    } else {
+        // Standart iş personeli güncelleme
+        const dataRow = isTakipData.find(r => r._ui_id === currentEditingRowKey);
+        
+        if(dataRow) {
+            dataRow['GÖREVLİ PERSONELLER'] = personnelWithoutTitles.join(', ');
+            
+            const rowInTable = document.querySelector(`tr[data-row-key="${currentEditingRowKey}"]`);
+            if (rowInTable) {
+                const hiddenSelect = $(rowInTable).find('.personel-select');
+                hiddenSelect.val(selectedPersonnel).trigger('change.select2');
+            }
+
+            markAsDirty();
+            document.getElementById('personel-modal').style.display = 'none';
+            showToast('Personel listesi güncellendi. Kaydetmeyi unutmayın.');
+        }
     }
 }
 
