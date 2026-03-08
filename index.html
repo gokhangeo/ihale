@@ -252,15 +252,74 @@
             background-color: #ffc107; /* Warning color */
             color: #212529;
         }
+        
+        /* Notlar Tablosu ve Açılır Kapanır Satır Stilleri */
         #notlar-table td {
-            white-space: pre-wrap; /* Notların düzgün görünmesi için */
-            word-break: break-word;
-            padding: 6px 8px; /* Boşluklar azaltıldı */
             vertical-align: top;
-            line-height: 1.4; /* Satır aralığı sıkılaştırıldı */
+            padding: 6px 8px;
         }
         
-        /* Yeni eklenen Not Listesi Stili */
+        .note-cell {
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .note-cell:hover {
+            background-color: rgba(0, 123, 255, 0.05);
+        }
+        
+        .note-content-wrapper {
+            max-height: 4.2em; /* Yaklaşık 3 satır görünecek şekilde kısıtla */
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            position: relative;
+            word-break: break-word;
+            line-height: 1.4;
+        }
+        
+        .note-cell.expanded .note-content-wrapper {
+            max-height: 1000px; /* İçerik ne kadar uzunsa açılsın */
+        }
+        
+        /* Genişleyebilir olduğunu belli eden ikon/gölge */
+        .note-content-wrapper::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 1.5em;
+            background: linear-gradient(transparent, white);
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        
+        .note-cell.expanded .note-content-wrapper::after {
+            opacity: 0;
+        }
+        
+        tr:nth-child(even) .note-content-wrapper::after {
+            background: linear-gradient(transparent, #f2f2f2);
+        }
+        
+        .tamamlandi .note-content-wrapper::after {
+            background: linear-gradient(transparent, #f0f0f0);
+        }
+
+        .expand-icon {
+            display: block;
+            text-align: center;
+            font-size: 10px;
+            color: #007bff;
+            margin-top: 2px;
+            opacity: 0.7;
+        }
+        
+        .note-cell.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+        
         .note-list {
             margin: 0;
             padding-left: 20px;
@@ -278,10 +337,12 @@
             display: flex;
             flex-direction: column;
             gap: 5px;
+            margin-top: 5px;
         }
         .note-edit-container textarea {
             width: 100%;
             box-sizing: border-box;
+            font-family: inherit;
         }
         .note-edit-buttons {
             display: flex;
@@ -739,6 +800,14 @@ function handleSummaryCardClick(event) {
 
 function handleTableClick(event) {
     const target = event.target;
+    
+    // Not hücresine (tablo satırına değil, doğrudan hücreye) tıklandıysa aç/kapat yap
+    const noteCell = target.closest('.note-cell');
+    if (noteCell && !target.closest('.note-edit-container') && !target.closest('button')) {
+        noteCell.classList.toggle('expanded');
+        return; // Düzenleme moduna geçmesini engelle
+    }
+
     const button = target.closest('button');
     if (button) { // Handle button clicks first
         if (button.classList.contains('personel-info-btn')) {
@@ -1133,7 +1202,6 @@ async function fetchFromGitHub() {
 
         document.getElementById('loader').style.display = 'none';
         document.getElementById('githubKaydetBtn').disabled = false;
-        // setUyari("Veriler başarıyla çekildi.", 'basari'); // Artık uyari div'i kullanılıyor
         markAsClean();
         durumFiltresiDoldur();
         
@@ -2467,7 +2535,7 @@ function createNotesTable() {
     // Tablo
     const table = document.createElement('table');
     table.id = 'notlar-table';
-    table.innerHTML = `<thead><tr><th>UYGULAMA</th><th>İLÇE</th><th>BİRİM</th><th>GÖREVLİ MÜHENDİS</th><th>NOT</th></tr></thead>`;
+    table.innerHTML = `<thead><tr><th style="width: 10%;">UYGULAMA</th><th style="width: 10%;">İLÇE</th><th style="width: 15%;">BİRİM</th><th style="width: 15%;">GÖREVLİ MÜHENDİS</th><th style="width: 50%;">NOT</th></tr></thead>`;
     const tbody = document.createElement('tbody');
     
     const notesWithData = isTakipData
@@ -2492,23 +2560,11 @@ function createNotesTable() {
             const lines = cleaned.split('\n');
             let formattedNote = '';
             
-            // Eğer zaten numaralı değilse numaralandır
-            if(lines.length > 0 && !/^\d+\./.test(lines[0])) {
-                 formattedNote = '<ol class="note-list">';
-                 lines.forEach(line => {
-                     if(line.trim() !== '') {
-                         formattedNote += `<li>${line.trim()}</li>`;
-                     }
-                 });
-                 formattedNote += '</ol>';
-            } else {
-                 formattedNote = cleaned; // Zaten formatlıysa dokunma (ancak genellikle düz metin gelir)
-            }
             // Biz burada sadece düz metin olarak kaydediyoruz, gösterirken HTML listesi yapıyoruz
             // Ancak, düzenleme modunda düz metin görünmeli.
             // Bu yüzden "displayHTML" diye ayrı bir alan tutalım.
             
-             let displayHTML = '<ol class="note-list">';
+             let displayHTML = '<div class="note-content-wrapper"><ol class="note-list">';
                  lines.forEach(line => {
                      // Var olan numaraları temizle (örn: "1. Not" -> "Not")
                      const content = line.replace(/^\d+[\.\)]\s*/, '').trim();
@@ -2516,7 +2572,7 @@ function createNotesTable() {
                          displayHTML += `<li>${content}</li>`;
                      }
                  });
-                 displayHTML += '</ol>';
+                 displayHTML += '</ol></div><span class="expand-icon">▼ Detay ▼</span>';
 
             return { 
                 ...row, 
@@ -2561,21 +2617,20 @@ function createNotesTable() {
             <td>${row['İLÇE']}</td>
             <td>${row['BİRİM']}</td>
             <td class="muhendis-cell">${engineers}</td>
-            <td class="note-cell">${row['displayHTML']}</td>
+            <td class="note-cell" title="Açmak/Kapatmak veya Düzenlemek İçin Tıklayın">${row['displayHTML']}</td>
         `;
         
-        tr.addEventListener('click', (e) => {
-                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'TEXTAREA') return;
-
-            const noteCell = tr.querySelector('.note-cell');
-            if (noteCell.querySelector('.note-edit-container')) return;
+        // Düzenleme moduna geçiş
+        tr.querySelector('.note-cell').addEventListener('dblclick', function(e) {
+            e.stopPropagation();
+            if (this.querySelector('.note-edit-container')) return;
             
             // Düzenleme modunda ham metni (temizlenmiş) göster
             const noteText = row['cleanNote'];
 
-            noteCell.innerHTML = `
+            this.innerHTML = `
                 <div class="note-edit-container">
-                    <textarea rows="6">${noteText || ''}</textarea>
+                    <textarea rows="8">${noteText || ''}</textarea>
                     <div class="note-edit-buttons">
                         <button class="note-delete-inline danger">Sil</button>
                         <button class="note-save-inline success">Kaydet</button>
@@ -2583,9 +2638,9 @@ function createNotesTable() {
                 </div>
             `;
 
-            noteCell.querySelector('.note-save-inline').addEventListener('click', (e) => {
+            this.querySelector('.note-save-inline').addEventListener('click', (e) => {
                 e.stopPropagation(); // Satır tıklamasını engelle
-                const newNote = noteCell.querySelector('textarea').value;
+                const newNote = this.querySelector('textarea').value;
                 const cleanedNewNote = newNote.replace(/(\r\n|\n|\r)+/g, '\n').trim();
                 
                 const dataRow = isTakipData.find(r => r._ui_id === rowKey);
@@ -2593,18 +2648,19 @@ function createNotesTable() {
                 
                 // Ekranı güncelle
                 const lines = cleanedNewNote.split('\n');
-                let newDisplayHTML = '<ol class="note-list">';
+                let newDisplayHTML = '<div class="note-content-wrapper"><ol class="note-list">';
                  lines.forEach(line => {
                      const content = line.replace(/^\d+[\.\)]\s*/, '').trim();
                      if(content !== '') {
                          newDisplayHTML += `<li>${content}</li>`;
                      }
                  });
-                 newDisplayHTML += '</ol>';
+                 newDisplayHTML += '</ol></div><span class="expand-icon">▼ Detay ▼</span>';
                  
                 row['cleanNote'] = cleanedNewNote;
                 row['displayHTML'] = newDisplayHTML;
-                noteCell.innerHTML = newDisplayHTML;
+                this.innerHTML = newDisplayHTML;
+                this.classList.remove('expanded'); // Kaydettikten sonra kapalı gelsin
                 
                 document.querySelectorAll(`tr[data-row-key="${rowKey}"] .not-btn`).forEach(btn => {
                     btn.classList.toggle('has-note', cleanedNewNote && cleanedNewNote.trim() !== '');
@@ -2617,7 +2673,7 @@ function createNotesTable() {
                 showToast('Not güncellendi. Kaydetmeyi unutmayın.');
             });
 
-            noteCell.querySelector('.note-delete-inline').addEventListener('click', (e) => {
+            this.querySelector('.note-delete-inline').addEventListener('click', (e) => {
                 e.stopPropagation();
                 const dataRow = isTakipData.find(r => r._ui_id === rowKey);
                 dataRow['NOTLAR'] = '';
@@ -2630,7 +2686,7 @@ function createNotesTable() {
             });
             
             // Textarea'ya tıklandığında satır olayını engelle
-            noteCell.querySelector('textarea').addEventListener('click', (e) => e.stopPropagation());
+            this.querySelector('textarea').addEventListener('click', (e) => e.stopPropagation());
         });
 
 
@@ -2638,12 +2694,13 @@ function createNotesTable() {
     });
 
     // Satır atlama işlevselliği
-    tbody.addEventListener('click', (e) => {
+    tbody.addEventListener('dblclick', (e) => {
         // Eğer tıklanan element düzenleme alanındaysa işlem yapma
         if (e.target.closest('.note-edit-container')) return;
 
         const row = e.target.closest('.note-row');
-        if (row) {
+        // Not hücresine çift tıkladıysa satır atlama yapma, düzenlemeye geçsin
+        if (row && !e.target.closest('.note-cell')) {
             const rowKey = row.dataset.rowKey;
             const uygulama = row.dataset.uygulama;
 
