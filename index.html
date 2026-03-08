@@ -2471,7 +2471,19 @@ function createNotesTable() {
     const tbody = document.createElement('tbody');
     
     const notesWithData = isTakipData
-        .filter(row => row['NOTLAR'] && row['NOTLAR'].trim() !== '')
+        .filter(row => {
+            if (!row['NOTLAR'] || row['NOTLAR'].trim() === '') return false;
+            
+            // Bilgilendirme ilanı tarihi girilmişse gizle
+            const detailRow = guncellemeData.find(d => d['İLÇE'] === row['İLÇE'] && d['BİRİM'] === row['BİRİM']);
+            if (detailRow && detailRow['BİLGİLENDİRME İLANI TARİHİ']) return false;
+            
+            // Tarih unutulma ihtimaline karşı durumdan da teyit et
+            const ileriDurumlar = ['BİLGİLENDİRME İLANINDA', 'KOMİSYON AŞAMASINDA', 'KESİN ASKIDA', 'DEVİR YAPILDI', 'TESCİL AŞAMASINDA', 'TESCİLİ BİTTİ'];
+            if (ileriDurumlar.includes(row['DURUMU'])) return false;
+
+            return true;
+        })
         .map(row => {
             const rawNote = row['NOTLAR'] || '';
             // Ardışık satır boşluklarını temizle
@@ -2676,7 +2688,18 @@ function createNotesTable() {
 
 function excelIndirNotlar() {
     const noteData = isTakipData
-        .filter(row => row['NOTLAR'] && row['NOTLAR'].trim() !== '')
+        .filter(row => {
+            if (!row['NOTLAR'] || row['NOTLAR'].trim() === '') return false;
+            
+            // Excel indirmesinde de bilgilendirme ilanına çıkanları gizle
+            const detailRow = guncellemeData.find(d => d['İLÇE'] === row['İLÇE'] && d['BİRİM'] === row['BİRİM']);
+            if (detailRow && detailRow['BİLGİLENDİRME İLANI TARİHİ']) return false;
+            
+            const ileriDurumlar = ['BİLGİLENDİRME İLANINDA', 'KOMİSYON AŞAMASINDA', 'KESİN ASKIDA', 'DEVİR YAPILDI', 'TESCİL AŞAMASINDA', 'TESCİLİ BİTTİ'];
+            if (ileriDurumlar.includes(row['DURUMU'])) return false;
+
+            return true;
+        })
         .map(row => ({ ...row, extractedDate: extractDateFromNote(row['NOTLAR']) }))
         .sort((a, b) => {
             const dateA = a.extractedDate;
