@@ -1021,8 +1021,15 @@ function displayWarnings() {
                         const mainDataRow = isTakipData.find(r => r['İLÇE'] === detailRow['İLÇE'] && r['BİRİM'] === detailRow['BİRİM']);
                         const durum = mainDataRow ? mainDataRow['DURUMU'] : '';
                         
-                        // Durumu 'DEVİR YAPILDI' değilse uyarıya ekle
-                        if (durum !== 'DEVİR YAPILDI') {
+                        // Devir yapıldı ve sonrası aşamalarda uyarıyı gösterme
+                        const uyariGosterilmeyecekDurumlar = [
+                            'DEVİR YAPILDI', 
+                            'TESCİL AŞAMASINDA', 
+                            'TESCİLİ BİTTİ', 
+                            'İHALEDEN/PROGRAMDAN ÇIKARILDI'
+                        ];
+                        
+                        if (!uyariGosterilmeyecekDurumlar.includes(durum)) {
                             warnings.kesinAskiBitti.push({ilce: detailRow['İLÇE'], birim: detailRow['BİRİM']});
                         }
                     }
